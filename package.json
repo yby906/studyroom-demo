@@ -1,0 +1,11 @@
+{
+  "name": "jingyuan-studyroom",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "静园 · 校园自习室预约管理系统（本地纯前端演示，无需数据库）",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test tests/*.test.js"
+  }
+}
