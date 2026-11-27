@@ -1,5 +1,5 @@
 import {
-  ACTION_LABELS, AUTH_MODE_LABELS, CONFIG_FIELDS, ROLE_KEYS, ROLES, activeBlacklist, roleLabel, roomOpenHours, roomSeatCount
+  ACTION_LABELS, AUTH_MODE_LABELS, CONFIG_FIELDS, ROLE_KEYS, ROLES, activeBlacklist, classOf, collegeOf, collegeShort, roleLabel, roomOpenHours, roomSeatCount
 } from '../core/rules.js'
 import { localDate, toLocal } from '../core/time.js'
 import { esc, icon, emptyState, statCard, sectionTitle, chip } from './components.js'
@@ -83,7 +83,7 @@ export function renderSysAccounts(ctx) {
   const roleFilter = ui.accountRole || 'ALL'
   const users = state.users
     .filter((u) => roleFilter === 'ALL' || u.role === roleFilter)
-    .filter((u) => !keyword || [u.name, u.username, u.studentNo, u.dept].join(' ').toLowerCase().includes(keyword))
+    .filter((u) => !keyword || [u.name, u.username, u.studentNo, u.dept, collegeOf(u), u.className].join(' ').toLowerCase().includes(keyword))
   const roleCounts = ROLE_KEYS.map((role) => ({ role, count: state.users.filter((u) => u.role === role).length }))
   const locked = state.users.filter((u) => accountStatus(state, u).key === 'locked').length
   return `
@@ -103,13 +103,13 @@ export function renderSysAccounts(ctx) {
         <div class="role-counts">${roleCounts.map(({ role, count }) => `<span>${roleLabel(role)} <strong>${count}</strong></span>`).join('')}</div>
       </div>
       ${users.length ? `<div class="table-wrap"><table class="data-table">
-        <thead><tr><th>账号</th><th>姓名 / 院系</th><th>角色</th><th>状态</th><th>创建时间</th><th class="align-right">操作</th></tr></thead>
+        <thead><tr><th>账号</th><th>姓名 / 学院</th><th>角色</th><th>状态</th><th>创建时间</th><th class="align-right">操作</th></tr></thead>
         <tbody>${users.map((user) => {
           const status = accountStatus(state, user)
           const attempt = state.loginAttempts[user.username]
           return `<tr>
             <td><div class="cell-main"><strong class="mono">${esc(user.username)}</strong><small>${user.studentNo ? esc(user.studentNo) : '教职工账号'}</small></div></td>
-            <td><div class="cell-main"><strong>${esc(user.name)}</strong><small>${esc(user.dept || '—')}</small></div></td>
+            <td><div class="cell-main"><strong>${esc(user.name)}</strong><small>${user.role === 'STUDENT' ? `${esc(collegeShort(collegeOf(user)))} · ${esc(classOf(user) || '未分班')}` : esc(user.dept || '—')}</small></div></td>
             <td>${chip(roleLabel(user.role), user.role === 'SYS_ADMIN' ? 'gold' : user.role === 'ROOM_ADMIN' ? 'clay' : user.role === 'LIB_ADMIN' ? 'blue' : 'green')}</td>
             <td><span class="status ${status.cls}"><i></i>${status.label}</span>${attempt?.lockedUntil > Date.now() ? `<small class="cell-hint">至 ${realStamp(attempt.lockedUntil)}</small>` : ''}</td>
             <td>${user.createdAt?.slice(0, 10) || '—'}</td>

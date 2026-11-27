@@ -6,6 +6,8 @@ const ICONS = {  book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5
   chair: '<path d="M6 12V4h12v8"/><path d="M4 12h16v5H4z"/><path d="M6 17v4M18 17v4"/>',
   shield: '<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/>',
+  'user-plus': '<circle cx="9" cy="8" r="3.6"/><path d="M2.5 20a6.5 6.5 0 0 1 12 0"/><path d="M19 8v6M16 11h6"/>',
+  graduation: '<path d="M2 9l10-5 10 5-10 5L2 9z"/><path d="M6 11.5V16c0 1.6 2.7 3 6 3s6-1.4 6-3v-4.5"/><path d="M22 9v6"/>',
   users: '<circle cx="9" cy="8" r="3.4"/><path d="M2.8 20a6.2 6.2 0 0 1 12.4 0"/><path d="M16 4.8a3.4 3.4 0 0 1 0 6.4M18 14a5.5 5.5 0 0 1 3.2 5"/>',
   chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.16.39.5.7.92.86H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1.14z"/>',
@@ -175,6 +177,31 @@ export function rankBar(rows, options = {}) {
       <div class="rank-track"><span style="width:${Math.max(2, (Number(row.value) || 0) / max * 100)}%"></span></div>
       <span class="rank-value">${row.display ?? row.value}${options.unit || ''}</span>
     </div>`).join('')}</div>`
+}
+
+export function donutChart(items, options = {}) {
+  const colors = ['#2f7a5f', '#7ba05b', '#c9a227', '#b8653f', '#5b7fa6', '#8b6f9e', '#4f8f8b', '#9ca3af']
+  const rows = items.filter((item) => Number(item.value) > 0)
+  const total = rows.reduce((sum, item) => sum + (Number(item.value) || 0), 0)
+  const unit = options.unit || '条'
+  let offset = 0
+  const segments = rows.map((item, i) => {
+    const share = total ? (Number(item.value) || 0) / total : 0
+    const dash = (share * 100).toFixed(2)
+    const seg = `<circle class="donut-seg" cx="21" cy="21" r="15.9155" stroke="${colors[i % colors.length]}"
+      stroke-dasharray="${dash} ${(100 - Number(dash)).toFixed(2)}" stroke-dashoffset="${(25 - offset).toFixed(2)}">
+      <title>${item.label}：${item.value}${unit}（${(share * 100).toFixed(1)}%）</title></circle>`
+    offset += Number(dash)
+    return seg
+  }).join('')
+  return `<div class="donut-wrap">
+    <div class="donut-chart" role="img" aria-label="${options.label || '构成占比'}">
+      <svg viewBox="0 0 42 42"><circle class="donut-track" cx="21" cy="21" r="15.9155"/>${segments}</svg>
+      <div class="donut-center"><strong>${options.totalLabel || total}</strong><span>${unit}</span></div>
+    </div>
+    <ul class="donut-legend">${rows.map((item, i) => `<li><i style="background:${colors[i % colors.length]}"></i>
+      <span>${item.label}</span><em>${item.value}${unit} · ${total ? ((Number(item.value) / total) * 100).toFixed(1) : '0.0'}%</em></li>`).join('')}</ul>
+  </div>`
 }
 
 export function heatmap(matrix, rows, cols) {

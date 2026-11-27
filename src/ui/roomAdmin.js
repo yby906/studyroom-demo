@@ -1,9 +1,9 @@
 import {
-  ACTION_LABELS, STATUS, STATUS_LABELS, activeBlacklist, buildReportRows, buildStats, enrichBooking,
+  ACTION_LABELS, STATUS, STATUS_LABELS, activeBlacklist, buildReportRows, buildStats, classOf, collegeOf, collegeShort, enrichBooking,
   maskStudentNo, roomLocation, roomOpenHours, roomSeatCount, seatsOfRoom, violationSummary
 } from '../core/rules.js'
 import { addDays, dateList, fmtDuration, fmtRange, humanDate, localDate, localTime, weekdayLabel } from '../core/time.js'
-import { esc, icon, emptyState, statCard, statusBadge, sectionTitle, lineChart, barChart, rankBar, pct, progress } from './components.js'
+import { esc, icon, emptyState, statCard, statusBadge, sectionTitle, lineChart, barChart, rankBar, pct, progress, chip } from './components.js'
 
 function todayOf(ctx) {
   return localDate(ctx.now)
@@ -19,6 +19,7 @@ export function renderAdminDashboard(ctx) {
   const stats = buildStats(state, { from: addDays(today, -6), to: today, now })
   const todayStats = buildStats(state, { from: today, to: today, now })
   const activeBlack = state.blacklist.filter((b) => b.status === 'ACTIVE')
+  const proxyToday = state.bookings.filter((b) => b.proxy && b.date === today).length
   const recent = state.bookings
     .filter((b) => b.date === today)
     .map((b) => enrichBooking(state, b))
@@ -65,7 +66,7 @@ export function renderAdminDashboard(ctx) {
     </section>
 
     <section class="panel">
-      ${sectionTitle('今日预约动态', '按开始时间展示', `<button class="btn btn-ghost btn-sm" data-action="nav" data-view="reservations">查看全部 ${icon('arrow', 15)}</button>`)}
+      ${sectionTitle('今日预约动态', '按开始时间展示', `${proxyToday ? chip(`今日代订 ${proxyToday} 条`, 'gold') : ''}<button class="btn btn-ghost btn-sm" data-action="nav" data-view="proxy">${icon('user-plus', 14)} 代订座位</button><button class="btn btn-ghost btn-sm" data-action="nav" data-view="reservations">查看全部 ${icon('arrow', 15)}</button>`)}
       ${recent.length ? `<div class="table-wrap"><table class="data-table compact">
         <thead><tr><th>学生</th><th>座位</th><th>时段</th><th>状态</th><th>签到时间</th></tr></thead>
         <tbody>${recent.map((b) => `<tr>
@@ -164,14 +165,14 @@ export function renderAdminReservations(ctx) {
     (status === 'ALL' || b.status === status)
   ).map((b) => enrichBooking(state, b))
   if (keyword) {
-    rows = rows.filter((b) => [b.studentName, b.studentNo, b.studentUsername, b.roomName, b.seatCode, b.code].join(' ').toLowerCase().includes(keyword))
+    rows = rows.filter((b) => [b.studentName, b.studentNo, b.studentUsername, b.college, b.className, b.roomName, b.seatCode, b.code, b.operatorName].join(' ').toLowerCase().includes(keyword))
   }
   rows.sort((a, b) => (b.date + b.start).localeCompare(a.date + a.start))
   const total = rows.length
   rows = rows.slice(0, 150)
   const roomOptions = state.rooms.map((r) => `<option value="${r.id}" ${r.id === roomId ? 'selected' : ''}>${esc(r.name)}</option>`).join('')
   return `
-    <div class="notice notice-info">${icon('eye', 19)}<div><strong>只读查询</strong><p>管理员仅可查看预约记录，不能修改学生预约。学生敏感信息已按最小必要原则展示。</p></div></div>
+    <div class="notice notice-info">${icon('user-plus', 19)}<div><strong>可代订、可取消，操作全程留痕</strong><p>管理员可为学生代订座位，并在详情中取消待签到或使用中的预约。学生敏感信息已按最小必要原则展示。</p></div><button class="btn btn-ghost btn-sm" data-action="nav" data-view="proxy">去代订</button></div>
     <section class="panel">
       ${sectionTitle('全部预约记录', '按日期、自习室、状态或学生检索；最多展示 150 条', '')}
       <div class="filter-row wrap">
@@ -185,13 +186,15 @@ export function renderAdminReservations(ctx) {
       </div>
       <div class="result-meta"><span>共 <strong>${total}</strong> 条记录</span><span>${date === 'ALL' ? '全部日期' : `${date} ${weekdayLabel(date)}`}${roomId ? ` · ${esc(state.rooms.find((r) => r.id === roomId)?.name || '')}` : ''}</span></div>
       ${rows.length ? `<div class="table-wrap"><table class="data-table">
-        <thead><tr><th>预约编号</th><th>学生</th><th>座位</th><th>日期与时段</th><th>状态</th><th>签到时间</th><th class="align-right">操作</th></tr></thead>
+        <thead><tr><th>预约编号</th><th>学生</th><th>学院 / 班级</th><th>座位</th><th>日期与时段</th><th>状态</th><th>来源</th><th>签到时间</th><th class="align-right">操作</th></tr></thead>
         <tbody>${rows.map((b) => `<tr>
           <td><span class="mono">${esc(b.code)}</span></td>
           <td><div class="cell-main"><strong>${esc(b.studentName)}</strong><small>${esc(maskStudentNo(b.studentNo) || b.studentUsername)}</small></div></td>
+          <td><div class="cell-main"><strong>${esc(b.college || '—')}</strong><small>${esc(b.className || '未分班')}</small></div></td>
           <td><div class="cell-main"><strong>${esc(b.roomName)} · ${esc(b.seatCode)}</strong><small>${esc(b.seatType)}</small></div></td>
           <td><div class="cell-main"><strong>${b.date} ${fmtRange(b.start, b.end)}</strong><small>${fmtDuration(b.duration)}</small></div></td>
           <td>${statusBadge(b.status, b.statusLabel)}${b.cancelReason ? `<small class="cell-hint">${esc(b.cancelReason)}</small>` : ''}</td>
+          <td>${b.proxy ? `<span class="chip chip-gold">代订</span><small class="cell-hint">${esc(b.operatorName || '管理员')}</small>` : '<span class="chip chip-soft">自助</span>'}${b.note ? `<small class="cell-hint">${esc(b.note)}</small>` : ''}</td>
           <td>${b.checkedInAt ? b.checkedInAt.slice(11, 16) : '—'}</td>
           <td class="align-right"><div class="row-actions"><button class="btn btn-ghost btn-xs" data-action="view-booking" data-id="${b.id}">${icon('eye', 13)} 详情</button></div></td>
         </tr>`).join('')}</tbody>
@@ -228,7 +231,7 @@ export function renderAdminViolations(ctx) {
         const user = state.users.find((u) => u.id === entry.userId)
         const summary = violationSummary(state, entry.userId)
         return `<article class="blacklist-card">
-          <div class="blacklist-head"><div class="person">${icon('user', 18)}<div><strong>${esc(user?.name || '学生')}</strong><small>${esc(maskStudentNo(user?.studentNo) || user?.username)} · ${esc(user?.dept || '')}</small></div></div><span class="status status-blacklist"><i></i>黑名单</span></div>
+          <div class="blacklist-head"><div class="person">${icon('user', 18)}<div><strong>${esc(user?.name || '学生')}</strong><small>${esc(maskStudentNo(user?.studentNo) || user?.username)} · ${esc(collegeShort(collegeOf(user)))} ${esc(user?.className || '')}</small></div></div><span class="status status-blacklist"><i></i>黑名单</span></div>
           <div class="blacklist-meta"><span>累计违约 <strong>${summary.count}</strong> 次</span><span>触发于 ${entry.triggeredAt.slice(0, 10)}</span></div>
           <p>${esc(entry.reason)}</p>
           <button class="btn btn-primary btn-sm" data-action="open-unblacklist" data-id="${entry.userId}">${icon('unlock', 14)} 解除黑名单</button>
@@ -243,7 +246,7 @@ export function renderAdminViolations(ctx) {
         <tbody>${violations.map((v) => {
           const userSummary = violationSummary(state, v.userId)
           return `<tr>
-            <td><div class="cell-main"><strong>${esc(v.user?.name || '—')}</strong><small>${esc(maskStudentNo(v.user?.studentNo) || v.user?.username || '')}</small></div></td>
+            <td><div class="cell-main"><strong>${esc(v.user?.name || '—')}</strong><small>${esc(maskStudentNo(v.user?.studentNo) || v.user?.username || '')}</small><small>${esc(collegeShort(collegeOf(v.user)))} · ${esc(v.user?.className || '未分班')}</small></div></td>
             <td>${v.createdAt.slice(0, 16)}</td>
             <td><div class="cell-main"><strong>${esc(v.room?.name || '—')} · ${esc(v.seat?.code || '')}</strong><small>${v.booking ? `${v.booking.date} ${fmtRange(v.booking.start, v.booking.end)}` : '—'}</small></div></td>
             <td><span class="chip chip-clay">超时未签到</span></td>
@@ -285,6 +288,7 @@ export function renderAdminReports(ctx) {
         <label class="field compact"><span>自习室范围</span><select data-bind="reportRoomId" data-type="number" data-refresh="admin"><option value="0">全部自习室</option>${state.rooms.map((r) => `<option value="${r.id}" ${r.id === roomId ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></label>
         <div class="filter-spacer"></div>
         <button class="btn btn-ghost" data-action="export-reservations">${icon('download', 16)} 导出预约明细</button>
+        <button class="btn btn-ghost" data-action="export-college" ${hasData ? '' : 'disabled'}>${icon('graduation', 16)} 导出学院统计</button>
         <button class="btn btn-primary" data-action="export-report" ${hasData ? '' : 'disabled'}>${icon('file', 16)} 导出统计报表</button>
       </div>
       <div class="quick-ranges">
@@ -310,6 +314,15 @@ export function renderAdminReports(ctx) {
           <td><div class="util-cell"><div class="progress"><span style="width:${row.utilization * 100}%"></span></div><small>${pct(row.utilization)}</small></div></td>
         </tr>`).join('')}</tbody>
       </table></div>
+    </section>
+    <section class="panel">
+      ${sectionTitle('按学院统计', '学院口径 = 预约学生所属学院；可导出学院/班级维度 CSV', `<button class="btn btn-ghost btn-sm" data-action="export-class">${icon('graduation', 15)} 导出班级明细</button>`)}
+      ${stats.byCollege.length ? `<div class="college-grid">${stats.byCollege.map((c) => `<article class="college-card">
+        <div class="college-card-head"><strong>${esc(c.short)} · ${esc(c.college)}</strong><span class="chip chip-soft">${c.students} 人</span></div>
+        <div class="college-figures"><span><small>预约</small><strong>${c.total}</strong></span><span><small>签到率</small><strong>${pct(c.checkinRate)}</strong></span><span><small>违约</small><strong>${c.missed}</strong></span><span><small>利用率</small><strong>${pct(c.utilization)}</strong></span></div>
+        <div class="progress"><span style="width:${Math.min(100, c.utilization * 100)}%"></span></div>
+        <small class="muted">占全部预约 ${pct(c.share)}</small>
+      </article>`).join('')}</div>` : '<p class="muted">所选范围暂无学院数据。</p>'}
     </section>
     <section class="panel">
       ${sectionTitle('按自习室统计', '便于比较不同空间的资源使用情况', '')}

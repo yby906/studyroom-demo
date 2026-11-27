@@ -2,8 +2,9 @@ import { createStore } from './core/store.js'
 import { DEMO_PASSWORD } from './core/seed.js'
 import {
   ROLES, ROLE_KEYS, ACTION_LABELS, AUTH_MODE_LABELS, RuleError, activeBlacklist, advanceDemoTime, audit,
-  batchSeats, bookingById, bookingDeadlineMs, bookingStartMs, buildReportRows, buildStats, cancelBooking, checkIn,
-  checkOut, clockNow, createBooking, createUser, csvText, deleteRoom, deleteSeat, enrichBooking,
+  batchSeats, bookingById, bookingDeadlineMs, bookingStartMs, buildClassRows, buildCollegeRows, buildReportRows,
+  buildStats, cancelBooking, cancelBookingByAdmin, checkIn,
+  checkOut, clockNow, COLLEGES, UNASSIGNED_COLLEGE, collegeOf, collegeShort, createBooking, createUser, csvText, deleteRoom, deleteSeat, enrichBooking,
   login, logout, maskStudentNo, registerUser, resolveAuthException, roomById, roomLocation, roomSeatCount, saveConfig, saveRoom,
   saveSeat, seatById, sessionUser, setDemoTime, setSeatEnabled, simulateAuthSync, sweep,
   toggleRoom, touchSession, unblacklist, unlockUser, updateUser, userByName, userById
@@ -14,6 +15,7 @@ import { loginPage } from './ui/login.js'
 import { renderStudentCalendar, renderStudentGuide, renderStudentMine, renderStudentSeats, renderStudentViolations } from './ui/student.js'
 import { renderAdminDashboard, renderAdminReports, renderAdminReservations, renderAdminRooms, renderAdminSeats, renderAdminViolations } from './ui/roomAdmin.js'
 import { renderAnalytics } from './ui/analytics.js'
+import { renderProxy } from './ui/proxy.js'
 import { renderSysAccounts, renderSysAuth, renderSysConfig, renderSysDashboard, renderSysLogs } from './ui/sysAdmin.js'
 import { avatar, esc, icon, logoMark, qrSvg, roleBadge, statusBadge } from './ui/components.js'
 
@@ -34,7 +36,7 @@ let ctx = {
 
 const ROLE_VIEWS = {
   STUDENT: ['seats', 'mine', 'calendar', 'violations', 'guide'],
-  ROOM_ADMIN: ['dashboard', 'rooms', 'seats', 'reservations', 'violations', 'reports'],
+  ROOM_ADMIN: ['dashboard', 'rooms', 'seats', 'proxy', 'reservations', 'violations', 'reports'],
   LIB_ADMIN: ['analytics'],
   SYS_ADMIN: ['dashboard', 'accounts', 'logs', 'auth', 'config']
 }
@@ -51,6 +53,7 @@ const NAV_ITEMS = {
     { view: 'dashboard', label: '管理概览', icon: 'grid' },
     { view: 'rooms', label: '房间管理', icon: 'building' },
     { view: 'seats', label: '座位管理', icon: 'chair' },
+    { view: 'proxy', label: '代订座位', icon: 'user-plus' },
     { view: 'reservations', label: '预约记录', icon: 'calendar' },
     { view: 'violations', label: '违约与黑名单', icon: 'shield', badge: 'blacklist' },
     { view: 'reports', label: '统计报表', icon: 'file' }
@@ -75,7 +78,8 @@ const VIEW_META = {
   guide: { eyebrow: 'A BETTER STUDY', title: '使用指南', desc: '了解预约、签到、签退与违约规则，轻松开启自习。' },
   dashboard: { admin: { eyebrow: 'SPACE OVERVIEW', title: '管理概览', desc: '掌握今日预约与座位运行状态，让每个座位发挥价值。' }, sys: { eyebrow: 'SYSTEM OVERVIEW', title: '系统概览', desc: '查看账号、任务、日志与配置，保障系统稳定运行。' } },
   rooms: { eyebrow: 'ROOM MANAGEMENT', title: '房间管理', desc: '维护自习室基础信息与开放状态。' },
-  reservations: { eyebrow: 'RESERVATION QUERY', title: '预约记录', desc: '按条件检索全校预约记录，只读查询、全程留痕。' },
+  proxy: { eyebrow: 'BOOK ON BEHALF', title: '代订座位', desc: '为线下咨询、集体活动或临时无法自助预约的学生锁定座位。' },
+  reservations: { eyebrow: 'RESERVATION QUERY', title: '预约记录', desc: '检索全校预约记录，支持管理员代订与取消，全程留痕。' },
   reports: { eyebrow: 'STATISTICS & EXPORT', title: '统计报表', desc: '按统一口径统计预约、签到、违约与座位利用率。' },
   analytics: { eyebrow: 'DATA & INSIGHT', title: '使用分析', desc: '从聚合数据中发现高峰与闲置，为资源调配提供依据。' },
   accounts: { eyebrow: 'ACCOUNTS & ROLES', title: '账号权限', desc: '分配角色权限、启停账号并处理登录锁定。' },
@@ -121,7 +125,16 @@ function initUi() {
     logKeyword: '',
     logPage: 1,
     analyticsDays: 7,
-    analyticsRoomId: 0
+    analyticsRoomId: 0,
+    analyticsCollege: 'ALL',
+    proxyDate: today,
+    proxyCollege: 'ALL',
+    proxyKeyword: '',
+    proxyStudentId: 0,
+    proxyRoomId: firstRoom?.id || 0,
+    proxyStart: '',
+    proxyEnd: '',
+    proxySeatId: null
   }
 }
 
@@ -196,7 +209,7 @@ function shellHtml() {
       <div class="sidebar-tip"><span class="tip-mark">${icon('spark', 16)}</span><h4>${tip.title}</h4><p>${tip.text}</p></div>
       <div class="sidebar-user">
         ${avatar(ctx.user.name, role)}
-        <div><strong>${esc(ctx.user.name)}</strong><small>${ROLES[role]?.label || role}</small></div>
+        <div><strong>${esc(ctx.user.name)}</strong><small>${ctx.user.role === 'STUDENT' ? esc(`${collegeShort(collegeOf(ctx.user))} · ${ctx.user.className || '未分班'}`) : ROLES[role]?.label || role}</small></div>
         <button class="icon-btn ghost" data-action="logout" title="退出登录" aria-label="退出登录">${icon('logout', 18)}</button>
       </div>
     </aside>
@@ -236,6 +249,7 @@ function renderViewContent() {
     case 'dashboard': return role === 'SYS_ADMIN' ? renderSysDashboard(ctx) : renderAdminDashboard(ctx)
     case 'rooms': return renderAdminRooms(ctx)
     case 'reservations': return renderAdminReservations(ctx)
+    case 'proxy': return renderProxy(ctx)
     case 'reports': return renderAdminReports(ctx)
     case 'analytics': return renderAnalytics(ctx)
     case 'accounts': return renderSysAccounts(ctx)
@@ -454,6 +468,10 @@ function renderModal() {
           ${user ? `<label class="field"><span>账号状态</span><select name="enabled"><option value="true" ${user.enabled ? 'selected' : ''}>启用</option><option value="false" ${!user.enabled ? 'selected' : ''}>停用</option></select></label>` : ''}
           <label class="field"><span>学号 / 工号</span><input name="studentNo" maxlength="20" value="${esc(user?.studentNo || '')}"></label>
           <label class="field"><span>院系 / 部门</span><input name="dept" maxlength="40" value="${esc(user?.dept || '')}"></label>
+          <label class="field"><span>学院（统计口径）</span><select name="college">
+            ${[UNASSIGNED_COLLEGE, ...COLLEGES].map((c) => `<option value="${esc(c)}" ${(user?.college || UNASSIGNED_COLLEGE) === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+          </select></label>
+          <label class="field"><span>班级</span><input name="className" maxlength="20" value="${esc(user?.className || '')}" placeholder="例如：计科2301"></label>
         </div>
         <div class="modal-actions"><button class="btn btn-ghost" type="button" data-action="close-modal">取消</button><button class="btn btn-primary" type="submit">${user ? '保存变更' : '创建账号'}</button></div>
       </form>`
@@ -462,19 +480,37 @@ function renderModal() {
     inner = `
       <span class="modal-icon">${icon('calendar', 24)}</span>
       <h2>预约详情</h2>
-      <p class="modal-sub">${esc(b?.code || '')} · 只读记录</p>
+      <p class="modal-sub">${esc(b?.code || '')} · ${ctx.user.role === 'STUDENT' ? '只读记录' : b?.proxy ? '代订记录' : '预约记录'}</p>
       <dl class="detail-list modal-detail">
         <div><dt>学生</dt><dd>${esc(b?.studentName || '—')} · ${esc(maskStudentNo(b?.studentNo) || b?.studentUsername || '')}</dd></div>
+        <div><dt>学院 / 班级</dt><dd>${esc(b?.college || '—')} · ${esc(b?.className || '未分班')}</dd></div>
         <div><dt>自习室</dt><dd>${esc(b?.roomName || '—')} · ${esc(b?.seatCode || '')}（${esc(b?.seatType || '')}）</dd></div>
         <div><dt>日期与时段</dt><dd>${b?.date || ''} ${fmtRange(b?.start, b?.end)}</dd></div>
         <div><dt>状态</dt><dd>${esc(b?.statusLabel || '—')}</dd></div>
+        <div><dt>预约来源</dt><dd>${b?.proxy ? `管理员代订 · ${esc(b?.operatorName || '—')}` : '学生自助'}</dd></div>
+        ${b?.note ? `<div><dt>用途备注</dt><dd>${esc(b.note)}</dd></div>` : ''}
         <div><dt>创建时间</dt><dd>${b?.createdAt?.slice(0, 16) || '—'}</dd></div>
         <div><dt>签到截止</dt><dd>${b?.checkinDeadline?.slice(0, 16) || '—'}</dd></div>
         <div><dt>签到时间</dt><dd>${b?.checkedInAt?.slice(0, 16) || '—'}</dd></div>
         <div><dt>结束时间</dt><dd>${b?.endedAt?.slice(0, 16) || '—'}</dd></div>
         ${b?.cancelReason ? `<div><dt>取消原因</dt><dd>${esc(b.cancelReason)}</dd></div>` : ''}
       </dl>
-      <div class="modal-actions"><button class="btn btn-primary" data-action="close-modal">关闭</button></div>`
+      <div class="modal-actions">
+        ${ctx.user.role !== 'STUDENT' && ['WAITING', 'CHECKED_IN'].includes(b?.status) ? `<button class="btn btn-danger" data-action="open-admin-cancel" data-id="${b.id}">${icon('x', 15)} 管理员取消预约</button>` : ''}
+        <button class="btn btn-primary" data-action="close-modal">关闭</button>
+      </div>`
+  } else if (m.type === 'admin-cancel') {
+    const b = enrichBooking(state, bookingById(state, m.id))
+    inner = `
+      <span class="modal-icon warn">${icon('x', 24)}</span>
+      <h2>管理员取消预约</h2>
+      <p class="modal-sub">将代 ${esc(b?.studentName || '该学生')} 取消 ${esc(b?.roomName || '')} ${esc(b?.seatCode || '')} · ${b?.date || ''} ${fmtRange(b?.start, b?.end)}。此操作写入日志。</p>
+      <form data-form="admin-cancel">
+        <input type="hidden" name="id" value="${m.id}">
+        <label class="field"><span>取消原因 *</span><textarea name="reason" rows="3" required minlength="2" maxlength="200" placeholder="例如：学生线下说明当天无法到馆，经核实后取消"></textarea></label>
+        <p class="modal-note">${icon('info', 14)} 使用中的预约取消后会立即释放座位；已完成的预约不可取消。</p>
+        <div class="modal-actions"><button class="btn btn-ghost" type="button" data-action="close-modal">返回</button><button class="btn btn-danger" type="submit">确认取消预约</button></div>
+      </form>`
   } else if (m.type === 'register') {
     inner = `
       <span class="modal-icon">${icon('user', 24)}</span>
@@ -491,7 +527,11 @@ function renderModal() {
         </div>
         <div class="form-grid two">
           <label class="field"><span>学号</span><input name="studentNo" maxlength="20" placeholder="选填"></label>
-          <label class="field"><span>院系</span><input name="dept" maxlength="40" placeholder="选填"></label>
+          <label class="field"><span>学院</span><select name="college">${[UNASSIGNED_COLLEGE, ...COLLEGES].map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select></label>
+        </div>
+        <div class="form-grid two">
+          <label class="field"><span>班级</span><input name="className" maxlength="20" placeholder="例如：计科2301"></label>
+          <label class="field"><span>院系（选填）</span><input name="dept" maxlength="40" placeholder="选填"></label>
         </div>
         <p class="modal-note">${icon('info', 14)} 注册账号默认为学生角色，登录名和密码仅保存在本机浏览器，请勿使用真实校园统一认证密码。</p>
         <div class="modal-actions"><button class="btn btn-ghost" type="button" data-action="close-modal">取消</button><button class="btn btn-primary" type="submit">创建账号并登录</button></div>
@@ -806,6 +846,33 @@ function exportReport() {
   toast('统计报表已导出为 CSV。')
 }
 
+function exportCollegeStats(kind) {
+  const inAnalytics = ctx.view === 'analytics'
+  const days = Number(ctx.ui.analyticsDays) || 7
+  const to = inAnalytics ? todayKey(ctx.now) : (ctx.ui.reportTo || todayKey(ctx.now))
+  const from = inAnalytics ? addDays(to, -(days - 1)) : (ctx.ui.reportFrom || addDays(to, -6))
+  const roomId = Number(inAnalytics ? ctx.ui.analyticsRoomId : ctx.ui.reportRoomId) || 0
+  const college = inAnalytics ? (ctx.ui.analyticsCollege || 'ALL') : 'ALL'
+  const isClass = kind === 'class'
+  const rows = isClass
+    ? buildClassRows(state, { from, to, roomId, college, now: ctx.now })
+    : buildCollegeRows(state, { from, to, roomId, college, now: ctx.now })
+  if (!rows.length) {
+    toast('所选范围无统计数据，未生成报表。', 'error')
+    return
+  }
+  const headers = isClass
+    ? ['学院', '班级', '预约量', '签到量', '违约量', '取消量', '签到率(%)']
+    : ['学院', '学生数', '预约量', '签到量', '违约量', '取消量', '签到率(%)', '使用时长(小时)', '座位利用率(%)']
+  const body = isClass
+    ? rows.map((r) => [r.college, r.className, r.total, r.attended, r.missed, r.cancelled, r.checkinRate])
+    : rows.map((r) => [r.college, r.students, r.total, r.attended, r.missed, r.cancelled, r.checkinRate, r.hours, r.utilization])
+  download(`${isClass ? '班级' : '学院'}预约统计_${from}_${to}.csv`, csvText(headers, body))
+  audit(state, ctx.user, 'REPORT_EXPORT', `导出${isClass ? '班级' : '学院'}维度统计 ${from} 至 ${to}，共 ${rows.length} 行`, ctx.now)
+  persist()
+  toast(`已导出 ${rows.length} 行${isClass ? '班级' : '学院'}统计。`)
+}
+
 function exportReservations() {
   const { adminDate, adminRoomId, adminStatus, adminKeyword, reportFrom, reportTo, reportRoomId } = ctx.ui
   const useReport = ctx.view === 'reports'
@@ -818,16 +885,16 @@ function exportReservations() {
   let rows = state.bookings
     .filter((b) => (date === 'ALL' || (b.date >= from && b.date <= to)) && (!roomId || b.roomId === roomId) && (status === 'ALL' || b.status === status))
     .map((b) => enrichBooking(state, b))
-  if (keyword) rows = rows.filter((b) => [b.studentName, b.studentNo, b.roomName, b.seatCode, b.code].join(' ').toLowerCase().includes(keyword))
+  if (keyword) rows = rows.filter((b) => [b.studentName, b.studentNo, b.college, b.className, b.roomName, b.seatCode, b.code].join(' ').toLowerCase().includes(keyword))
   rows.sort((a, b) => (b.date + b.start).localeCompare(a.date + a.start))
   if (!rows.length) {
     toast('当前筛选范围没有可导出的预约记录。', 'error')
     return
   }
   const csv = csvText(
-    ['预约编号', '学生姓名', '学号', '院系', '自习室', '座位', '日期', '开始', '结束', '状态', '签到时间', '取消原因'],
-    rows.map((b) => [b.code, b.studentName, maskStudentNo(b.studentNo), b.dept, b.roomName, b.seatCode, b.date, b.start, b.end,
-      b.statusLabel, b.checkedInAt || '', b.cancelReason || ''])
+    ['预约编号', '学生姓名', '学号', '学院', '班级', '院系', '自习室', '座位', '日期', '开始', '结束', '状态', '预约来源', '操作人', '签到时间', '取消原因'],
+    rows.map((b) => [b.code, b.studentName, maskStudentNo(b.studentNo), b.college, b.className, b.dept, b.roomName, b.seatCode, b.date, b.start, b.end,
+      b.statusLabel, b.proxy ? '管理员代订' : '学生自助', b.proxy ? b.operatorName : b.studentName, b.checkedInAt || '', b.cancelReason || ''])
   )
   download(`预约明细_${date === 'ALL' ? '全部' : from === to ? from : `${from}_${to}`}.csv`, csv)
   audit(state, ctx.user, 'REPORT_EXPORT', `导出预约明细 ${rows.length} 条`, ctx.now)
@@ -857,6 +924,7 @@ function handleBind(el) {
   const value = el.dataset.type === 'number' ? Number(el.value) : el.value
   ctx.ui[bind] = value
   if (bind === 'start' || bind === 'roomId' || bind === 'date') ctx.ui.seatId = null
+  if (['proxyStart', 'proxyEnd', 'proxyRoomId', 'proxyDate', 'proxyStudentId'].includes(bind)) ctx.ui.proxySeatId = null
   if (bind.startsWith('log')) ctx.ui.logPage = 1
   renderApp({ focus: bind })
 }
@@ -912,6 +980,14 @@ function handleAction(action, el) {
         if (el.disabled) return
         ctx.ui.seatId = id
         renderApp()
+        return
+      case 'proxy-pick-seat':
+        if (el.disabled) return
+        ctx.ui.proxySeatId = id
+        renderApp()
+        return
+      case 'open-admin-cancel':
+        openModal({ type: 'admin-cancel', id })
         return
       case 'open-book':
         if (!ctx.ui.seatId) return
@@ -1083,6 +1159,12 @@ function handleAction(action, el) {
       case 'export-reservations':
         exportReservations()
         return
+      case 'export-college':
+        exportCollegeStats('college')
+        return
+      case 'export-class':
+        exportCollegeStats('class')
+        return
       case 'export-logs':
         exportLogs()
         return
@@ -1095,6 +1177,10 @@ function handleAction(action, el) {
         return
       case 'set-analytics-days':
         ctx.ui.analyticsDays = Number(el.dataset.days)
+        renderApp()
+        return
+      case 'set-analytics-college':
+        ctx.ui.analyticsCollege = el.dataset.college || 'ALL'
         renderApp()
         return
       case 'calendar-prev':
@@ -1178,6 +1264,33 @@ function handleSubmit(form) {
       enterSession(user, `注册成功，已为你登录，${user.name}。`)
       return
     }
+    if (kind === 'proxy-book') {
+      const student = userById(state, Number(data.studentId))
+      if (!student) {
+        toast('请先选择要代订的学生。', 'error')
+        return
+      }
+      if (!data.seatId) {
+        toast('请选择一个空闲座位。', 'error')
+        return
+      }
+      const booking = createBooking(state, student, {
+        seatId: Number(data.seatId), date: data.date, start: data.start, end: data.end, note: data.note
+      }, ctx.now, ctx.user)
+      ctx.ui.proxySeatId = null
+      persist()
+      renderApp()
+      toast(`已为 ${student.name} 代订：${booking.roomName} ${booking.seatCode} · ${booking.date} ${booking.start}–${booking.end}。`)
+      return
+    }
+    if (kind === 'admin-cancel') {
+      const booking = cancelBookingByAdmin(state, ctx.user, Number(data.id), ctx.now, data.reason)
+      closeModal()
+      persist()
+      renderApp()
+      toast(`已取消 ${booking.studentName} 在 ${booking.roomName} ${booking.seatCode} 的预约，座位已释放。`)
+      return
+    }
     if (kind === 'cancel') {
       const booking = cancelBooking(state, ctx.user, ctx.modal.id, ctx.now, data.reason)
       closeModal()
@@ -1242,7 +1355,8 @@ function handleSubmit(form) {
     if (kind === 'user') {
       if (data.id) {
         updateUser(state, ctx.user, Number(data.id), {
-          name: data.name, role: data.role, enabled: data.enabled === 'true', studentNo: data.studentNo, dept: data.dept
+          name: data.name, role: data.role, enabled: data.enabled === 'true', studentNo: data.studentNo,
+          dept: data.dept, college: data.college, className: data.className
         }, ctx.now)
         closeModal()
         persist()

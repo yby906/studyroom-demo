@@ -1,4 +1,4 @@
-import { DEFAULT_CONFIG } from './rules.js'
+import { DEFAULT_CONFIG, UNASSIGNED_COLLEGE } from './rules.js'
 import { isValidState } from './seed.js'
 import { toLocal } from './time.js'
 
@@ -42,6 +42,16 @@ function normalizeState(raw) {
     lastAt: null, created: 0, updated: 0, skipped: 0, handled: 0,
     exceptions: [], resolved: {}, operator: null, ...(state.authSync || {})
   }
+  state.users = (state.users || []).map((user) => ({
+    ...user,
+    college: user.college || (user.role === 'STUDENT' ? user.dept || UNASSIGNED_COLLEGE : UNASSIGNED_COLLEGE),
+    className: user.className || ''
+  }))
+  state.bookings = (state.bookings || []).map((booking) => ({
+    ...booking,
+    note: booking.note || '',
+    proxy: Boolean(booking.proxy)
+  }))
   state.authSync.resolved = state.authSync.resolved || {}
   state.authSync.exceptions = Array.isArray(state.authSync.exceptions) ? state.authSync.exceptions : []
   state.session = null

@@ -1,4 +1,4 @@
-import { DEFAULT_CONFIG, STATUS, maybeBlacklist } from './rules.js'
+import { COLLEGES, DEFAULT_CONFIG, STATUS, maybeBlacklist } from './rules.js'
 import {
   MINUTE, addDays, dateTimeAt, localDate, localTime, minutesToTime, parseLocal,
   timeToMinutes, toLocal
@@ -8,31 +8,28 @@ export const STORAGE_KEY = 'jingyuan.studyroom.v1'
 export const DEMO_PASSWORD = 'Study@2026'
 
 const CAMPUS = '主校区'
-const DEPTS = [
-  '计算机科学与技术学院', '软件工程学院', '外国语学院', '数学与统计学院',
-  '经济管理学院', '机械与电气工程学院', '人文学院', '生命科学学院'
-]
+const DEPTS = COLLEGES
 
 const USER_SEEDS = [
   { username: 'sysadmin', name: '周明远', role: 'SYS_ADMIN', dept: '信息化中心' },
   { username: 'roomadmin', name: '王岚', role: 'ROOM_ADMIN', dept: '图书馆自习室管理部' },
   { username: 'libadmin', name: '李承泽', role: 'LIB_ADMIN', dept: '图书馆办公室' },
-  { username: 'student', name: '林一舟', role: 'STUDENT', studentNo: '20230101', dept: '计算机科学与技术学院' },
-  { username: 'student2', name: '陈思远', role: 'STUDENT', studentNo: '20230102', dept: '软件工程学院' },
-  { username: 'student3', name: '苏晚晴', role: 'STUDENT', studentNo: '20230103', dept: '外国语学院' },
-  { username: 'student4', name: '赵子昂', role: 'STUDENT', studentNo: '20230104', dept: '数学与统计学院' },
-  { username: 'student5', name: '沈书瑶', role: 'STUDENT', studentNo: '20230105', dept: '经济管理学院' },
-  { username: 'student6', name: '何砚秋', role: 'STUDENT', studentNo: '20230106', dept: '机械与电气工程学院' },
-  { username: 'student7', name: '周一诺', role: 'STUDENT', studentNo: '20230107', dept: '人文学院' },
-  { username: 'student8', name: '顾星野', role: 'STUDENT', studentNo: '20230108', dept: '生命科学学院' },
-  { username: 'student9', name: '江予安', role: 'STUDENT', studentNo: '20230109', dept: '计算机科学与技术学院' },
-  { username: 'student10', name: '许知夏', role: 'STUDENT', studentNo: '20230110', dept: '外国语学院' },
-  { username: 'student11', name: '陆时雨', role: 'STUDENT', studentNo: '20230111', dept: '软件工程学院' },
-  { username: 'student12', name: '温以宁', role: 'STUDENT', studentNo: '20230112', dept: '数学与统计学院' },
-  { username: 'student13', name: '程亦舟', role: 'STUDENT', studentNo: '20230113', dept: '机械与电气工程学院' },
-  { username: 'student14', name: '白露', role: 'STUDENT', studentNo: '20230114', dept: '人文学院' },
-  { username: 'student15', name: '唐知微', role: 'STUDENT', studentNo: '20230115', dept: '经济管理学院' },
-  { username: 'student16', name: '韩叙', role: 'STUDENT', studentNo: '20230116', dept: '计算机科学与技术学院' }
+  { username: 'student', name: '林一舟', role: 'STUDENT', studentNo: '20230101', dept: '计算机科学与技术学院', className: '计科2301' },
+  { username: 'student2', name: '陈思远', role: 'STUDENT', studentNo: '20230102', dept: '软件工程学院', className: '软工2302' },
+  { username: 'student3', name: '苏晚晴', role: 'STUDENT', studentNo: '20230103', dept: '外国语学院', className: '英语2301' },
+  { username: 'student4', name: '赵子昂', role: 'STUDENT', studentNo: '20230104', dept: '数学与统计学院', className: '数统2302' },
+  { username: 'student5', name: '沈书瑶', role: 'STUDENT', studentNo: '20230105', dept: '经济管理学院', className: '经管2301' },
+  { username: 'student6', name: '何砚秋', role: 'STUDENT', studentNo: '20230106', dept: '机械与电气工程学院', className: '机电2302' },
+  { username: 'student7', name: '周一诺', role: 'STUDENT', studentNo: '20230107', dept: '人文学院', className: '汉语言2301' },
+  { username: 'student8', name: '顾星野', role: 'STUDENT', studentNo: '20230108', dept: '生命科学学院', className: '生科2302' },
+  { username: 'student9', name: '江予安', role: 'STUDENT', studentNo: '20230109', dept: '计算机科学与技术学院', className: '计科2302' },
+  { username: 'student10', name: '许知夏', role: 'STUDENT', studentNo: '20230110', dept: '外国语学院', className: '英语2302' },
+  { username: 'student11', name: '陆时雨', role: 'STUDENT', studentNo: '20230111', dept: '软件工程学院', className: '软工2301' },
+  { username: 'student12', name: '温以宁', role: 'STUDENT', studentNo: '20230112', dept: '数学与统计学院', className: '数统2301' },
+  { username: 'student13', name: '程亦舟', role: 'STUDENT', studentNo: '20230113', dept: '机械与电气工程学院', className: '机电2301' },
+  { username: 'student14', name: '白露', role: 'STUDENT', studentNo: '20230114', dept: '人文学院', className: '汉语言2302' },
+  { username: 'student15', name: '唐知微', role: 'STUDENT', studentNo: '20230115', dept: '经济管理学院', className: '经管2302' },
+  { username: 'student16', name: '韩叙', role: 'STUDENT', studentNo: '20230116', dept: '计算机科学与技术学院', className: '计科2301' }
 ]
 
 const ROOM_SEEDS = [
@@ -126,6 +123,8 @@ export function seedState(nowReal = Date.now()) {
       role: seed.role,
       studentNo: seed.studentNo || '',
       dept: seed.dept,
+      college: seed.role === 'STUDENT' ? seed.dept : '未分配学院',
+      className: seed.className || '',
       enabled: true,
       lockedUntil: 0,
       failCount: 0,
@@ -205,7 +204,11 @@ export function seedState(nowReal = Date.now()) {
       checkinDeadline: toLocal(startMs + state.config.checkinWindow * MINUTE, true),
       checkedInAt: extra.checkedInAt || null,
       endedAt: extra.endedAt || null,
-      cancelReason: extra.cancelReason || null
+      cancelReason: extra.cancelReason || null,
+      note: extra.note || '',
+      ...(extra.proxy
+        ? { createdBy: extra.createdBy, createdByRole: extra.createdByRole, operatorName: extra.operatorName, proxy: true }
+        : {})
     }
     state.bookings.push(booking)
     return booking
@@ -405,7 +408,7 @@ export function seedState(nowReal = Date.now()) {
         if (startMin + duration > close) continue
         const seat = pick(rnd, seatsOf(room))
         const user = pick(rnd, students.filter((s) =>
-          ![4, 5].includes(s.id) && !state.blacklist.some((b) => b.userId === s.id && b.status === 'ACTIVE')
+          ![4, 5, 7, 10].includes(s.id) && !state.blacklist.some((b) => b.userId === s.id && b.status === 'ACTIVE')
         ))
         makeBooking(user.id, seat, date, startMin, startMin + duration, STATUS.WAITING,
           toLocal(now - (60 + Math.floor(rnd() * 600)) * MINUTE, true))
@@ -433,6 +436,38 @@ export function seedState(nowReal = Date.now()) {
       toLocal(now - 80 * MINUTE, true))
   }
 
+  // 管理员代订演示：由自习室管理员或图书馆负责人替学生锁座
+  function proxyBooking(actorUsername, studentUsername, roomIndex, offset, startMin, endMin, note, status = STATUS.WAITING) {
+    const actor = state.users.find((u) => u.username === actorUsername)
+    const student = state.users.find((u) => u.username === studentUsername)
+    const room = state.rooms[roomIndex]
+    if (!actor || !student || !room || !room.enabled) return
+    const date = addDays(today, offset)
+    if (startMin < roomOpen(room) || endMin > roomClose(room)) return
+    const seat = seatsOf(room).find((s) => freeIntervals(seatBusy, `${s.id}|${date}`, startMin, endMin))
+    if (!seat) return
+    const startMs = dateTimeAt(date, minutesToTime(startMin))
+    const endMs = dateTimeAt(date, minutesToTime(endMin))
+    const done = status === STATUS.COMPLETED
+    const createdAt = offset < 0
+      ? toLocal(startMs - 120 * MINUTE, true)
+      : toLocal(now - (60 + offset * 30) * MINUTE, true)
+    makeBooking(student.id, seat, date, startMin, endMin, status, createdAt, {
+      createdBy: actor.id,
+      createdByRole: actor.role,
+      operatorName: actor.name,
+      proxy: true,
+      note,
+      checkedInAt: done ? toLocal(startMs + 4 * MINUTE, true) : null,
+      endedAt: done ? toLocal(endMs, true) : null
+    })
+  }
+  proxyBooking('roomadmin', 'student4', 0, 1, 9 * 60, 11 * 60, '数学建模竞赛集训')
+  proxyBooking('roomadmin', 'student7', 1, 1, 15 * 60, 17 * 60, '毕业论文资料查阅')
+  proxyBooking('libadmin', 'student10', 2, 2, 13 * 60, 15 * 60, '外语角活动准备')
+  proxyBooking('roomadmin', 'student12', 0, -2, 8 * 60, 9 * 60, '学科竞赛集训，管理员代为锁座', STATUS.COMPLETED)
+  proxyBooking('libadmin', 'student14', 1, -3, 8 * 60, 9 * 60, '学生外出实习，委托管理员预约', STATUS.COMPLETED)
+
   // 操作日志：最近几天的关键动作
   const rawLogs = []
   const userById = (id) => state.users.find((u) => u.id === id)
@@ -442,10 +477,16 @@ export function seedState(nowReal = Date.now()) {
   for (const booking of state.bookings) {
     if (booking.createdAt < cutoff) continue
     const student = userById(booking.userId)
+    const proxy = Boolean(booking.proxy)
+    const operator = proxy ? userById(booking.createdBy) : null
     rawLogs.push({
-      actorId: student?.id, actorName: student?.name, actorRole: 'STUDENT',
-      action: 'BOOK', target: booking.code,
-      detail: `${roomName(booking.roomId)} ${seatCode(booking.seatId)} · ${booking.date} ${booking.start}–${booking.end}`,
+      actorId: proxy ? operator?.id : student?.id,
+      actorName: proxy ? operator?.name : student?.name,
+      actorRole: proxy ? operator?.role : 'STUDENT',
+      action: proxy ? 'PROXY_BOOK' : 'BOOK', target: booking.code,
+      detail: proxy
+        ? `代 ${student?.name || '学生'}（${student?.studentNo || ''}）预约 ${roomName(booking.roomId)} ${seatCode(booking.seatId)} · ${booking.date} ${booking.start}–${booking.end}`
+        : `${roomName(booking.roomId)} ${seatCode(booking.seatId)} · ${booking.date} ${booking.start}–${booking.end}`,
       createdAt: booking.createdAt, result: '成功'
     })
     if (booking.checkedInAt) {

@@ -28,6 +28,25 @@ export const STATUS_LABELS = {
 export const ACTIVE_STATUS = ['WAITING', 'CHECKED_IN']
 export const SEAT_TYPES = ['标准', '靠窗', '插座', '无障碍']
 
+export const COLLEGES = [
+  '计算机科学与技术学院', '软件工程学院', '外国语学院', '数学与统计学院',
+  '经济管理学院', '机械与电气工程学院', '人文学院', '生命科学学院'
+]
+const COLLEGE_SHORT = {
+  计算机科学与技术学院: '计科',
+  软件工程学院: '软工',
+  外国语学院: '外语',
+  数学与统计学院: '数统',
+  经济管理学院: '经管',
+  机械与电气工程学院: '机电',
+  人文学院: '人文',
+  生命科学学院: '生科'
+}
+export const UNASSIGNED_COLLEGE = '未分配学院'
+export const collegeOf = (user) => user?.college || UNASSIGNED_COLLEGE
+export const collegeShort = (name) => COLLEGE_SHORT[name] || String(name || '').replace(/学院$/, '') || UNASSIGNED_COLLEGE
+export const classOf = (user) => user?.className || ''
+
 export const DEFAULT_CONFIG = {
   openTime: '08:00',
   closeTime: '22:00',
@@ -61,7 +80,9 @@ export const ACTION_LABELS = {
   LOGOUT: '退出登录',
   LOGIN_FAIL: '登录失败',
   BOOK: '创建预约',
+  PROXY_BOOK: '管理员代订',
   CANCEL: '取消预约',
+  CANCEL_ADMIN: '管理员取消预约',
   CHECK_IN: '签到入座',
   CHECK_OUT: '离场签退',
   MISSED: '超时未签到',
@@ -286,7 +307,11 @@ export function enrichBooking(state, booking) {
     studentName: user?.name || '—',
     studentUsername: user?.username || '—',
     studentNo: user?.studentNo || '',
+    college: collegeOf(user),
+    className: classOf(user),
     dept: user?.dept || '',
+    proxy: Boolean(booking.proxy),
+    operatorName: booking.operatorName || user?.name || '',
     statusLabel: STATUS_LABELS[booking.status] || booking.status,
     duration: bookingDuration(booking),
     startAt: `${booking.date} ${booking.start}`,
@@ -370,10 +395,12 @@ export function endTimeOptions(state, room, date, start, now) {
   return options
 }
 
-export function validateBooking(state, user, input, now) {
+export function validateBooking(state, user, input, now, options = {}) {
   const { seatId, date, start, end } = input
   if (activeBlacklist(state, user.id)) {
-    fail('您已被列入预约黑名单，暂不能预约；如有异议请联系自习室管理员。', 'BLACKLIST')
+    fail(options.proxy
+      ? '该学生当前在预约黑名单中，不能代订；请先在违约处理中解除黑名单。'
+      : '您已被列入预约黑名单，暂不能预约；如有异议请联系自习室管理员。', 'BLACKLIST')
   }
   const seat = seatById(state, seatId)
   if (!seat) fail('请选择有效座位。', 'SEAT')
@@ -426,8 +453,10 @@ export function validateBooking(state, user, input, now) {
   return { seat, room, startMs, endMs, duration }
 }
 
-export function createBooking(state, user, input, now) {
-  const { seat, startMs, endMs } = validateBooking(state, user, input, now)
+export function createBooking(state, user, input, now, operator = null) {
+  const proxy = Boolean(operator && operator.id !== user.id)
+  if (proxy && user.role !== 'STUDENT') fail('只能为学生代订座位。', 'ROLE')
+  const { seat, startMs, endMs } = validateBooking(state, user, input, now, { proxy })
   const id = state.next.booking++
   const deadlineBase = Math.max(now, startMs)
   const booking = {
@@ -444,10 +473,22 @@ export function createBooking(state, user, input, now) {
     checkinDeadline: toLocal(deadlineBase + state.config.checkinWindow * MINUTE, true),
     checkedInAt: null,
     endedAt: null,
-    cancelReason: null
+    cancelReason: null,
+    createdBy: proxy ? operator.id : user.id,
+    createdByRole: proxy ? operator.role : user.role,
+    operatorName: proxy ? operator.name : user.name,
+    proxy,
+    note: String(input.note || '').slice(0, 60)
   }
   state.bookings.push(booking)
-  audit(state, user, 'BOOK', `${roomName(state, seat.roomId)} ${seat.code} · ${input.date} ${input.start}–${input.end}`, now, booking.code)
+  const detail = `${roomName(state, seat.roomId)} ${seat.code} · ${input.date} ${input.start}–${input.end}`
+  if (proxy) {
+    audit(state, operator, 'PROXY_BOOK',
+      `代 ${user.name}（${user.studentNo || user.username} · ${collegeShort(collegeOf(user))}）预约 ${detail}`,
+      now, booking.code)
+  } else {
+    audit(state, user, 'BOOK', detail, now, booking.code)
+  }
   return enrichBooking(state, booking)
 }
 
@@ -472,6 +513,28 @@ export function cancelBooking(state, user, bookingId, now, reason = '学生主�
   booking.cancelReason = text
   const enriched = enrichBooking(state, booking)
   audit(state, user, 'CANCEL', `${enriched.roomName} ${enriched.seatCode} · ${text}`, now, booking.code)
+  return enriched
+}
+
+export function cancelBookingByAdmin(state, actor, bookingId, now, reason = '管理员代学生取消') {
+  if (!actor || actor.role === 'STUDENT') fail('仅管理员可取消学生预约。', 'FORBIDDEN')
+  const booking = bookingById(state, bookingId)
+  if (!booking) fail('预约不存在。', 'NOT_FOUND')
+  if (![STATUS.WAITING, STATUS.CHECKED_IN].includes(booking.status)) {
+    fail(`该预约当前状态为“${STATUS_LABELS[booking.status]}”，无需取消。`, 'STATUS')
+  }
+  const text = String(reason || '').trim() || '管理员代学生取消'
+  if (text.length > 200) fail('取消原因不能超过 200 字。', 'REASON')
+  const wasInUse = booking.status === STATUS.CHECKED_IN
+  booking.status = STATUS.CANCELLED
+  booking.endedAt = toLocal(now, true)
+  booking.cancelReason = text
+  booking.cancelledBy = actor.id
+  booking.cancelledByRole = actor.role
+  const enriched = enrichBooking(state, booking)
+  audit(state, actor, 'CANCEL_ADMIN',
+    `取消 ${enriched.studentName}（${enriched.studentNo || enriched.studentUsername}）${enriched.roomName} ${enriched.seatCode}${wasInUse ? '（使用中，座位已释放）' : ''} · ${text}`,
+    now, booking.code)
   return enriched
 }
 
@@ -776,12 +839,16 @@ export function registerUser(state, input, now) {
   const password = String(input.password || '')
   const studentNo = String(input.studentNo || '').trim()
   const dept = String(input.dept || '').trim()
+  const college = String(input.college || '').trim()
+  const className = String(input.className || '').trim()
   if (!/^[A-Za-z0-9_]{3,20}$/.test(username)) fail('登录名须为 3–20 位字母、数字或下划线。', 'USERNAME')
   if (!name || name.length < 2 || name.length > 20) fail('请填写姓名（2–20 字）。', 'NAME')
   if (password.length < 6 || password.length > 40) fail('密码须为 6–40 位字符。', 'PASSWORD')
   if (userByName(state, username)) fail('该登录名已被使用，请更换。', 'DUP')
   if (studentNo && !/^[A-Za-z0-9-]{3,20}$/.test(studentNo)) fail('学号须为 3–20 位字母、数字或连字符。', 'STUDENT_NO')
   if (dept.length > 40) fail('院系名称不能超过 40 字。', 'DEPT')
+  if (college.length > 40) fail('学院名称不能超过 40 字。', 'COLLEGE')
+  if (className.length > 20) fail('班级不能超过 20 字。', 'CLASS')
   const user = {
     id: state.next.user++,
     username,
@@ -790,13 +857,17 @@ export function registerUser(state, input, now) {
     role: 'STUDENT',
     studentNo,
     dept: dept || '未填写院系',
+    college: college || UNASSIGNED_COLLEGE,
+    className,
     enabled: true,
     lockedUntil: 0,
     failCount: 0,
     createdAt: toLocal(now, true)
   }
   state.users.push(user)
-  audit(state, { id: user.id, name: user.name, role: user.role }, 'REGISTER', `新用户注册：${name}（${username}）`, now, String(user.id))
+  audit(state, { id: user.id, name: user.name, role: user.role }, 'REGISTER',
+    `新用户注册：${name}（${username} · ${collegeShort(user.college)}${className ? ` · ${className}` : ''}）`,
+    now, String(user.id))
   return user
 }
 
@@ -815,6 +886,8 @@ export function createUser(state, actor, input, now) {
     role: input.role,
     studentNo: String(input.studentNo || '').trim(),
     dept: String(input.dept || '').trim() || '未分配院系',
+    college: String(input.college || '').trim() || UNASSIGNED_COLLEGE,
+    className: String(input.className || '').trim().slice(0, 20),
     enabled: true,
     lockedUntil: 0,
     failCount: 0,
@@ -840,6 +913,8 @@ export function updateUser(state, actor, userId, patch, now) {
   if (typeof patch.enabled === 'boolean') user.enabled = patch.enabled
   if (typeof patch.name === 'string' && patch.name.trim()) user.name = patch.name.trim().slice(0, 20)
   if (typeof patch.dept === 'string') user.dept = patch.dept.trim().slice(0, 40)
+  if (typeof patch.college === 'string') user.college = patch.college.trim().slice(0, 40) || UNASSIGNED_COLLEGE
+  if (typeof patch.className === 'string') user.className = patch.className.trim().slice(0, 20)
   if (typeof patch.studentNo === 'string') user.studentNo = patch.studentNo.trim().slice(0, 20)
   if (patch.enabled === false) state.session = state.session?.username === user.username ? null : state.session
   const after = `${roleLabel(user.role)} · ${user.enabled ? '启用' : '停用'}`
@@ -905,11 +980,15 @@ export function buildStats(state, options = {}) {
   const to = options.to || today
   const from = options.from || addDays(to, -6)
   const roomId = options.roomId ? Number(options.roomId) : 0
+  const college = options.college && options.college !== 'ALL' ? String(options.college).trim() : ''
   const selectedRooms = state.rooms.filter((r) => !roomId || r.id === roomId)
   const days = dateList(from, to).filter((d) => d <= today)
-  const bookings = state.bookings.filter((b) =>
+  const studentById = new Map(state.users.map((u) => [u.id, u]))
+  const collegeOfBooking = (b) => collegeOf(studentById.get(b.userId))
+  const scopeBookings = state.bookings.filter((b) =>
     b.date >= from && b.date <= to && (!roomId || b.roomId === roomId) && b.date <= today
   )
+  const bookings = scopeBookings.filter((b) => !college || collegeOfBooking(b) === college)
   const total = bookings.length
   const completed = bookings.filter((b) => b.status === STATUS.COMPLETED).length
   const cancelled = bookings.filter((b) => b.status === STATUS.CANCELLED).length
@@ -988,6 +1067,65 @@ export function buildStats(state, options = {}) {
     }
   })
 
+  const collegeNames = [...new Set([
+    ...state.users.filter((u) => u.role === 'STUDENT').map((u) => collegeOf(u)),
+    ...scopeBookings.map((b) => collegeOfBooking(b))
+  ])].sort()
+  const collegeHours = (list) => list
+    .filter((b) => b.status !== STATUS.CANCELLED && b.status !== STATUS.MISSED)
+    .reduce((sum, b) => sum + bookingDurationInRoom(b, roomById(state, b.roomId) || { openTime: '08:00', closeTime: '22:00' }), 0)
+  const scopeHours = collegeHours(bookings)
+  const collegeGroupsFiltered = new Map()
+  for (const b of bookings) {
+    const name = collegeOfBooking(b)
+    if (!collegeGroupsFiltered.has(name)) collegeGroupsFiltered.set(name, [])
+    collegeGroupsFiltered.get(name).push(b)
+  }
+  const byCollege = [...collegeGroupsFiltered.entries()].map(([name, list]) => {
+    const attended = list.filter((b) => Boolean(b.checkedInAt)).length
+    const collegeMissed = list.filter((b) => b.status === STATUS.MISSED).length
+    const collegeCancelled = list.filter((b) => b.status === STATUS.CANCELLED).length
+    const collegeCompleted = list.filter((b) => b.status === STATUS.COMPLETED).length
+    const collegeCheckedIn = list.filter((b) => b.status === STATUS.CHECKED_IN).length
+    const base = collegeCompleted + collegeMissed + collegeCheckedIn
+    const hours = collegeHours(list)
+    return {
+      college: name,
+      short: collegeShort(name),
+      students: state.users.filter((u) => u.role === 'STUDENT' && collegeOf(u) === name).length,
+      total: list.length,
+      completed: collegeCompleted,
+      checkedIn: collegeCheckedIn,
+      attended,
+      missed: collegeMissed,
+      cancelled: collegeCancelled,
+      checkinRate: base ? Math.min(1, attended / base) : 0,
+      cancelRate: list.length ? collegeCancelled / list.length : 0,
+      violationRate: list.length ? collegeMissed / list.length : 0,
+      hours: Number(hours.toFixed(1)),
+      share: scopeHours ? hours / scopeHours : 0,
+      utilization: Math.min(1, seatHours ? hours / (seatHours * dayCount) : 0)
+    }
+  }).sort((a, b) => b.total - a.total || b.hours - a.hours)
+
+  const classGroups = new Map()
+  for (const b of bookings) {
+    const student = studentById.get(b.userId)
+    if (!student) continue
+    const key = `${collegeOf(student)}|${classOf(student) || '未分班'}`
+    if (!classGroups.has(key)) {
+      classGroups.set(key, { college: collegeOf(student), className: classOf(student) || '未分班', total: 0, attended: 0, missed: 0, cancelled: 0 })
+    }
+    const row = classGroups.get(key)
+    row.total++
+    if (b.checkedInAt) row.attended++
+    if (b.status === STATUS.MISSED) row.missed++
+    if (b.status === STATUS.CANCELLED) row.cancelled++
+  }
+  const byClass = [...classGroups.values()]
+    .map((row) => ({ ...row, checkinRate: row.total ? row.attended / row.total : 0 }))
+    .sort((a, b) => b.total - a.total)
+
   const violationByType = [{ type: '超时未签到', value: missed }]
 
   const heatCols = ['08–12', '12–16', '16–20', '20–22']
@@ -1003,6 +1141,8 @@ export function buildStats(state, options = {}) {
   return {
     range: { from, to, days: days.length },
     roomId,
+    college,
+    colleges: collegeNames,
     total,
     completed,
     cancelled,
@@ -1020,6 +1160,8 @@ export function buildStats(state, options = {}) {
     byDay,
     byHour,
     byRoom,
+    byCollege,
+    byClass,
     violationByType,
     weekHeat,
     heatRows,
@@ -1059,6 +1201,34 @@ export function buildReportRows(state, options) {
       }
     })
   ).filter((row) => row.total > 0)
+}
+
+export function buildCollegeRows(state, options) {
+  const stats = buildStats(state, options)
+  return stats.byCollege.map((row) => ({
+    college: row.college,
+    students: row.students,
+    total: row.total,
+    attended: row.attended,
+    missed: row.missed,
+    cancelled: row.cancelled,
+    checkinRate: Number((row.checkinRate * 100).toFixed(1)),
+    hours: row.hours,
+    utilization: Number((row.utilization * 100).toFixed(1))
+  }))
+}
+
+export function buildClassRows(state, options) {
+  const stats = buildStats(state, options)
+  return stats.byClass.map((row) => ({
+    college: row.college,
+    className: row.className,
+    total: row.total,
+    attended: row.attended,
+    missed: row.missed,
+    cancelled: row.cancelled,
+    checkinRate: Number((row.checkinRate * 100).toFixed(1))
+  }))
 }
 
 export function csvText(headers, rows) {

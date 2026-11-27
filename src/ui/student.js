@@ -1,9 +1,9 @@
 import {
   ACTIVE_STATUS, STATUS, activeBlacklist, bookingsOfUser, bookingDeadlineMs, bookingStartMs,
-  bookingDateOptions, seatAvailability, startTimeOptions, endTimeOptions, violationSummary
+  bookingDateOptions, classOf, collegeOf, collegeShort, seatAvailability, startTimeOptions, endTimeOptions, violationSummary
 } from '../core/rules.js'
 import { fmtDuration, fmtRange, humanDate, localDate, monthGrid, monthKeyOf, monthLabelOf, timeToMinutes, weekdayLabel } from '../core/time.js'
-import { esc, icon, emptyState, statCard, statusBadge } from './components.js'
+import { avatar, chip, esc, icon, emptyState, statCard, statusBadge } from './components.js'
 
 function ensureFilters(ctx) {
   const { state, now, ui } = ctx
@@ -141,6 +141,7 @@ export function renderStudentSeats(ctx) {
           <dl class="detail-list">
             <div><dt>自习室</dt><dd>${esc(room.name)}</dd></div>
             <div><dt>位置</dt><dd>${esc(room.building)} ${room.floor} 层</dd></div>
+            <div><dt>预约人</dt><dd>${esc(user.name)} · ${esc(collegeShort(collegeOf(user)))} ${esc(classOf(user) || '未分班')}</dd></div>
             <div><dt>预约日期</dt><dd>${ui.date} ${weekdayLabel(ui.date)}</dd></div>
             <div><dt>使用时段</dt><dd>${fmtRange(ui.start, ui.end)}</dd></div>
             <div><dt>时长</dt><dd>${duration > 0 ? fmtDuration(duration) : '—'}</dd></div>
@@ -175,6 +176,19 @@ export function renderStudentMine(ctx) {
     ['COMPLETED', '已完成', counts.COMPLETED || 0], ['CANCELLED', '已取消', counts.CANCELLED || 0], ['MISSED', '已失约', counts.MISSED || 0]
   ]
   return `
+    <section class="panel profile-strip">
+      ${avatar(user.name, 'STUDENT')}
+      <div class="profile-main">
+        <strong>${esc(user.name)}</strong>
+        <small>${esc(user.studentNo || '未填写学号')} · ${esc(collegeOf(user))} · ${esc(classOf(user) || '未分班')}</small>
+      </div>
+      <div class="profile-tags">
+        ${chip(`学院 ${collegeShort(collegeOf(user))}`, 'green')}
+        ${chip(classOf(user) || '未分班', 'soft')}
+        ${chip(`累计违约 ${violationSummary(state, user.id).count} 次`, violationSummary(state, user.id).count ? 'clay' : 'soft')}
+      </div>
+      <button class="btn btn-ghost btn-sm" data-action="nav" data-view="violations">信用详情 ${icon('arrow', 14)}</button>
+    </section>
     ${active.length ? `<div class="notice notice-info">${icon('calendar', 20)}<div><strong>你有 ${active.length} 条待使用或使用中的预约</strong><p>请在预约开始后 ${state.config.checkinWindow} 分钟内签到；结束使用后记得签退，让座位更快回到空闲状态。</p></div></div>` : ''}
     <section class="panel">
       ${sectionTitleLocal('我的预约记录', `共 ${all.length} 条 · 点击状态筛选，或搜索座位、自习室与日期`,
@@ -219,7 +233,8 @@ function reservationRow(ctx, booking) {
       : remaining > 0 ? `签到剩余 ${remaining} 分钟` : '签到窗口已结束')
     : booking.status === STATUS.CHECKED_IN ? '使用中，离场时请签退' : ''
   return `<tr>
-    <td><div class="cell-main"><strong>${esc(booking.roomName)} · ${esc(booking.seatCode)}</strong><small>${esc(booking.code)} · ${esc(booking.seatType)}</small></div></td>
+    <td><div class="cell-main"><strong>${esc(booking.roomName)} · ${esc(booking.seatCode)}</strong><small>${esc(booking.code)} · ${esc(booking.seatType)}</small>
+      ${booking.proxy ? `<small class="cell-hint">${icon('user-plus', 12)} 管理员代订 · ${esc(booking.operatorName || '')}</small>` : ''}${booking.note ? `<small class="cell-hint">用途：${esc(booking.note)}</small>` : ''}</div></td>
     <td><div class="cell-main"><strong>${booking.date} ${fmtRange(booking.start, booking.end)}</strong><small>${fmtDuration(booking.duration)}</small></div></td>
     <td>${statusBadge(booking.status)}${statusHint ? `<small class="cell-hint">${statusHint}</small>` : ''}${booking.cancelReason ? `<small class="cell-hint">${esc(booking.cancelReason)}</small>` : ''}</td>
     <td><div class="cell-main"><strong>${booking.checkedInAt ? booking.checkedInAt.slice(11, 16) : '—'}</strong><small>截止 ${booking.checkinDeadline.slice(5, 16).replace('T', ' ')}</small></div></td>

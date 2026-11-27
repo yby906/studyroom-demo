@@ -1287,3 +1287,88 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
   .side-utility .nav-item { justify-content: center; padding: 13px 8px; }
   .side-utility .nav-item span { display: none; }
 }
+
+/* ------------------------- 学院 / 班级 / 代订 / 个人资料 ------------------------- */
+
+.profile-strip {
+  display: flex; align-items: center; gap: 13px; padding: 15px 18px; margin-bottom: 16px;
+  background: linear-gradient(120deg, #f8f5ea, #fbfaf4 62%); border: 1px solid #e9e3d2;
+}
+.profile-strip .avatar { width: 46px; height: 46px; border-radius: 14px; font-size: 17px; }
+.profile-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.profile-main strong { font-family: var(--display); font-size: 18px; letter-spacing: .02em; color: var(--ink); }
+.profile-main small { font-size: 10.5px; color: var(--muted); }
+.profile-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+.profile-strip > .btn { flex-shrink: 0; }
+
+.college-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.college-card {
+  display: flex; flex-direction: column; gap: 8px; padding: 13px 14px;
+  border: 1px solid #e8e3d4; border-radius: 12px; background: #fbfaf4;
+}
+.college-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.college-card-head strong { font-size: 12.5px; color: var(--ink-2); line-height: 1.4; }
+.college-figures { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.college-figures span { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.college-figures small { font-size: 8.5px; color: var(--muted); }
+.college-figures strong { font-family: var(--display); font-size: 15px; color: var(--ink-2); }
+.college-card > .progress { margin-top: 1px; }
+
+.donut-wrap { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.donut-chart { position: relative; width: 166px; height: 166px; flex: 0 0 auto; }
+.donut-chart svg { width: 100%; height: 100%; }
+.donut-track { fill: none; stroke: #eceae0; stroke-width: 6.2; }
+.donut-seg { fill: none; stroke-width: 6.2; stroke-linecap: butt; transition: stroke-dasharray .3s ease; }
+.donut-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+.donut-center strong { font-family: var(--display); font-size: 27px; line-height: 1; color: var(--ink); }
+.donut-center span { margin-top: 3px; font-size: 9px; color: var(--muted); }
+.donut-legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; flex: 1 1 160px; min-width: 150px; }
+.donut-legend li { display: flex; align-items: center; gap: 7px; font-size: 10.5px; min-width: 0; }
+.donut-legend i { width: 8px; height: 8px; border-radius: 2.5px; flex: 0 0 auto; }
+.donut-legend span { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.donut-legend em { margin-left: auto; font-style: normal; font-size: 9.5px; color: var(--muted); white-space: nowrap; }
+
+.proxy-layout { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(270px, .78fr); gap: 16px; align-items: start; margin-bottom: 16px; }
+.proxy-form { display: flex; flex-direction: column; gap: 12px; }
+.proxy-student-card {
+  display: flex; align-items: center; gap: 11px; padding: 12px 14px;
+  border: 1px solid #e6dfcb; border-radius: 12px; background: #f7f3e6;
+}
+.proxy-student-card > div:not(.proxy-student-tags) { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.proxy-student-card strong { font-size: 14px; color: var(--ink); }
+.proxy-student-card small { font-size: 10px; color: var(--muted); }
+.proxy-student-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-left: auto; justify-content: flex-end; }
+.proxy-seat-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+.proxy-seat-head strong { font-size: 12.5px; color: var(--ink-2); }
+.proxy-seat-head .seat-legend { margin: 0; }
+.proxy-seat-map { margin: 2px 0 0; }
+.proxy-side { display: flex; flex-direction: column; gap: 14px; }
+.proxy-log-list { display: flex; flex-direction: column; gap: 8px; }
+.proxy-log {
+  display: flex; align-items: flex-start; gap: 9px; padding: 10px 11px;
+  border: 1px solid #ece7d9; border-radius: 10px; background: #fbfaf5;
+}
+.proxy-log-main { display: flex; flex-direction: column; gap: 1px; min-width: 46px; }
+.proxy-log-main strong { font-size: 12px; color: var(--ink); }
+.proxy-log-main small { font-size: 9px; color: var(--muted); }
+.proxy-log-meta { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+.proxy-log-meta span { font-size: 10px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.proxy-log-meta small { font-size: 9px; color: var(--muted); }
+.proxy-log .status { flex-shrink: 0; }
+
+@media (max-width: 1040px) {
+  .proxy-layout { grid-template-columns: 1fr; }
+  .proxy-side { display: grid; grid-template-columns: 1.2fr .8fr; align-items: start; }
+}
+@media (max-width: 900px) {
+  .college-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  .profile-strip { flex-wrap: wrap; }
+  .profile-tags { margin-left: 0; }
+  .profile-strip > .btn { width: 100%; }
+  .proxy-side { grid-template-columns: 1fr; }
+  .donut-wrap { gap: 12px; }
+  .donut-chart { width: 146px; height: 146px; }
+}
+
